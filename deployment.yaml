@@ -1,0 +1,55 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: kvagent
+  labels:
+    app.kubernetes.io/name: kvagent
+spec:
+  containers:
+  - image: quay.io/vladikr/kvagent
+    name: kvagent
+    envFrom:
+    - secretRef:
+        name: kvagent-secret
+    ports:
+    - containerPort: 8501
+      name: kvagent
+      protocol: TCP
+    volumeMounts:
+      - name: modelcache
+        mountPath: /app/models
+      - name: db
+        mountPath: /app/db
+  volumes:
+  - name: modelcache
+    emptyDir: {}
+  - name: db
+    emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kvagent
+spec:
+  type: NodePort
+  ports:
+  - name: "kvagent"
+    port: 8501
+    targetPort: 8501
+  selector:
+    app.kubernetes.io/name: kvagent
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: kvagent
+spec:
+  subdomain: kvagent
+  port:
+    targetPort: 8501
+  tls:
+    insecureEdgeTerminationPolicy: Redirect
+    termination: edge
+  to:
+    kind: Service
+    name: kvagent
