@@ -83,3 +83,9 @@ class RelatedPreferences(BaseModel):
         description="list of virtual machine preferences",
         # Add a pydantic validation/restriction to be at most M editors
     )
+
+class CallAgent(BaseModel):
+    callAgent: str = Field(
+        description="Select the next agent to run",
+        # Add a pydantic validation/restriction to be at most M editors
+    )

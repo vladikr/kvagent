@@ -1,4 +1,5 @@
 langchain
+langchain-huggingface
 langchain-openai
 huggingface_hub
 openai
