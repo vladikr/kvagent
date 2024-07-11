@@ -23,6 +23,7 @@ from langchain_community.document_loaders import JSONLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.prompts import PromptTemplate
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.documents import Document
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.output_parsers import JsonOutputParser
@@ -42,6 +43,7 @@ from langchain_groq import ChatGroq
 from langchain_openai import ChatOpenAI
 from kvtypes import *
 from kvtypes import RelatedInstanceTypes, CallAgent
+from bootableSources import find_bootable_sources
 
 import sys
 import logging
@@ -68,7 +70,6 @@ embedding_model=model_name
 embedding_func = embedding_functions.SentenceTransformerEmbeddingFunction(model_name=embedding_model, normalize_embeddings=True)
 e = SentenceTransformerEmbeddings(model_name=embedding_model, encode_kwargs=encode_kwargs)
 
-
 persist_directory = 'db'
 
 client = chromadb.PersistentClient(path=persist_directory)
@@ -80,7 +81,18 @@ collectionInstTypes = client.get_or_create_collection("instanceTypes",
 collectionPref = client.get_or_create_collection("prefs",
                                       embedding_function=embedding_func)
 
+collectionBootSources = client.get_or_create_collection("bootSrcs",
+                                      embedding_function=embedding_func)
 
+def load_bootable_sources():
+    docs = []
+    srcs = find_bootable_sources()
+    for doc in srcs:
+        document = Document(
+            page_content=doc['description'],
+            metadata={"name": doc['name']}
+    return docs
+)
 
 def fix_metadata(original_metadata):
     new_metadata = {}
@@ -135,6 +147,8 @@ if collectionPref.count() < 1:
     prefDocs = loaderPrefs.load()
     loadCollection(collectionPref, prefDocs)
 
+# load boot sources
+loadCollection(collectionBootSources, load_bootable_sources())
 
 instTypes_document_content_description = "desciption of the virtual machine instance types"
 

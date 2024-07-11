@@ -19,3 +19,4 @@ jq
 streamlit
 pymilvus
 pypdf
+openshift
