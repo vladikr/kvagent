@@ -3,6 +3,43 @@ from typing import List, Optional, Dict
 from typing_extensions import Literal
 from typing_extensions import TypedDict
 
+class ResourceRequirements(BaseModel):
+    class Config:
+        extra = "forbid"
+
+class StorageSpec(BaseModel):
+    resources: ResourceRequirements
+    class Config:
+        extra = "forbid"
+
+class DataVolumeMetadata(BaseModel):
+    name: str = Field(description="name of the data volume, this name must match the corresponding volume name")
+    labels: Optional[Dict[str, str]]
+
+class DataVolumeSourceRef(BaseModel):
+    kind: Literal["DataSource"]
+    name: str = Field(description="name of the data volume source, this should be retrieved")
+    namespace: Literal["openshift-virtualization-os-images"]
+
+class DataVolumeSpec(BaseModel):
+    sourceRef: DataVolumeSourceRef = Field(default=None, description="SourceRef is an indirect reference to the source of data for the requested DataVolume")
+    storage: StorageSpec = Field(default=None, description="SourceRef is an indirect reference to the source of data for the requested DataVolume")
+
+class DataVolumeTemplateSpec(BaseModel):
+    spec: DataVolumeSpec
+    metadata: DataVolumeMetadata
+
+class BootSource(BaseModel):
+  name: str = Field(
+        description="Name of the data volume boot source.", pattern=r"^[a-zA-Z0-9_-]{1,64}$"
+    )
+
+class RelatedBootSource(BaseModel):
+    bootsources: List[BootSource] = Field(
+        description="list of virtual machine boot sources",
+        # Add a pydantic validation/restriction to be at most M editors
+    )
+
 class InstancetypeMatcher(BaseModel):
     name: str = Field(description="name of the virtual machine instance type")
 
@@ -29,10 +66,14 @@ class DomainSpec(BaseModel):
 class ContainerDiskSource(BaseModel):
     image: str = Field(description="image is the name of the image with the embedded disk")
 
+class DataVolumeSource(BaseModel):
+    name: str = Field(description="name of the corresponding dataVolume")
+
 class Volume(BaseModel):
     name: str = Field(description="name of the volume, this name must match the corresponding disk name")
     #PersistentVolumeClaim: PersistentVolumeClaimVolumeSource
-    containerDisk: ContainerDiskSource
+    #containerDisk: Optional[ContainerDiskSource]
+    dataVolume: DataVolumeSource|None = None
 
 class VirtualMachineInstanceSpec(BaseModel):
     domain: DomainSpec
@@ -46,10 +87,11 @@ class VirtualMachineSpec(BaseModel):
     instancetype: InstancetypeMatcher
     preference: PreferenceMatcher
     template: VirtualMachineInstanceTemplateSpec
+    dataVolumeTemplates: Optional[List[DataVolumeTemplateSpec]] = Field(default=None)#, exclude=True)
 
 class Metadata(BaseModel):
     name: str = Field(description="name of the virtual machine")
-    labels: Dict[str, str]
+    labels: Optional[Dict[str, str]]
 
 class VirtualMachine(BaseModel):
     apiVersion: Literal['kubevirt.io/v1']
@@ -87,5 +129,11 @@ class RelatedPreferences(BaseModel):
 class CallAgent(BaseModel):
     callAgent: str = Field(
         description="Select the next agent to run",
+        # Add a pydantic validation/restriction to be at most M editors
+    )
+
+class RelatedVolumes(BaseModel):
+    volumes: List[Volume] = Field(
+        description="list of virtual machine volumes",
         # Add a pydantic validation/restriction to be at most M editors
     )
