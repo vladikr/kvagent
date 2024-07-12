@@ -17,6 +17,9 @@ RUN pip install --default-timeout=100 --no-cache-dir --upgrade -r /app/requireme
 COPY app.py .
 COPY kvagent.py .
 COPY kvtypes.py .
+COPY vmpreferences.py .
+COPY vminstancetypes.py .
+COPY bootableSources.py .
 EXPOSE  8501
 ENV  HF_HUB_CACHE=/app/models/
 ENTRYPOINT [ "streamlit", "run" ,"app.py" ]

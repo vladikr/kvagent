@@ -23,6 +23,7 @@ from langchain_community.document_loaders import JSONLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.prompts import PromptTemplate
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.documents import Document
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.output_parsers import JsonOutputParser
@@ -32,6 +33,7 @@ from langchain.output_parsers.yaml import YamlOutputParser
 
 import chromadb.utils.embedding_functions as embedding_functions
 
+from typing import List, Optional, Dict
 
 import chromadb
 from langchain_community.vectorstores import Chroma
@@ -41,7 +43,10 @@ from langgraph.graph import StateGraph, END
 from langchain_groq import ChatGroq
 from langchain_openai import ChatOpenAI
 from kvtypes import *
-from kvtypes import RelatedInstanceTypes, CallAgent
+from kvtypes import RelatedInstanceTypes, CallAgent, DataVolumeTemplateSpec, Volume
+from vmpreferences import prefs_document_content_description, prefs_metadata_field_info
+from vminstancetypes import instTypes_metadata_field_info, instTypes_document_content_description
+from bootableSources import find_bootable_sources, bootSrcs_document_content_description, bootSrcs_metadata_field_info
 
 import sys
 import logging
@@ -68,7 +73,6 @@ embedding_model=model_name
 embedding_func = embedding_functions.SentenceTransformerEmbeddingFunction(model_name=embedding_model, normalize_embeddings=True)
 e = SentenceTransformerEmbeddings(model_name=embedding_model, encode_kwargs=encode_kwargs)
 
-
 persist_directory = 'db'
 
 client = chromadb.PersistentClient(path=persist_directory)
@@ -80,7 +84,17 @@ collectionInstTypes = client.get_or_create_collection("instanceTypes",
 collectionPref = client.get_or_create_collection("prefs",
                                       embedding_function=embedding_func)
 
+collectionBootSources = client.get_or_create_collection("bootSrcs",
+                                      embedding_function=embedding_func)
 
+def load_bootable_sources():
+    docs = []
+    srcs = find_bootable_sources()
+    for doc in srcs:
+        docs.append(Document(
+            page_content=doc['description'],
+            metadata={"name": doc['name']}))
+    return docs
 
 def fix_metadata(original_metadata):
     new_metadata = {}
@@ -135,115 +149,10 @@ if collectionPref.count() < 1:
     prefDocs = loaderPrefs.load()
     loadCollection(collectionPref, prefDocs)
 
-
-instTypes_document_content_description = "desciption of the virtual machine instance types"
-
-instTypes_metadata_field_info = [
-    AttributeInfo(
-        name="cpu",
-        description="Specifies the number of virtual CPUs the virtual machines requires",
-        type="integer",
-    ),
-        AttributeInfo(
-        name="dedicatedCPUPlacement",
-        description="Indicates whether the virtual machines requires dedicated CPUs. dedicated CPUs also means excluse non-shared cpus. This is needed for high performance workloads",
-        type="bool",
-    ),
-        AttributeInfo(
-        name="isolateEmulatorThread",
-        description="Indicates whether the virtual machines requires its emulator thread to be isolated on separate physcial CPU. This is needed for high performance workloads",
-        type="bool",
-    ),
-        AttributeInfo(
-        name="hugepages",
-        description="Indicates whether the virtual machines requires hugepages. This is needed for high performance workloads",
-        type="bool",
-    ),
-        AttributeInfo(
-        name="memory",
-        description="Specifies the amount of memory needed for the virtual machine to run. The value is in bytes.",
-        type="integer",
-    ),
-        AttributeInfo(
-        name="name",
-        description="name of the virtual machine instance type",
-        type="string",
-    ),
-        AttributeInfo(
-        name="numa",
-        description="Indicates whether the virtual machines guest NUMA topology should be mapped the hosts topology. This amy be needed for real time or latency sensitive workloads",
-        type="bool",
-    ),
-
-]
+# load boot sources
+loadCollection(collectionBootSources, load_bootable_sources())
 
 
-# Description of the loads prefs
-
-
-prefs_document_content_description = "description of the Virtual Machine Preferences"
-
-prefs_metadata_field_info = [
-    AttributeInfo(
-        name="clock.preferredTimer.hpet.present",
-        description="Indicates whether HPET timer is required",
-        type="bool",
-    ),
-        AttributeInfo(
-        name="firmware.preferredUseSecureBoot",
-        description="Indicated whether secure boot should be used",
-        type="string or list[string]",
-    ),
-        AttributeInfo(
-        name="devices.preferredNetworkInterfaceMultiQueue",
-        description="optionally enables the vhost multiqueue feature for virtio interfaces",
-        type="bool",
-    ),
-        AttributeInfo(
-        name="devices.preferredInputBus",
-        description="optionally defines the preferred bus for Input devices",
-        type="string or list[string]",
-    ),
-        AttributeInfo(
-        name="name",
-        description="The name of the virtual machine preference",
-        type="string or list[string]",
-    ),
-        AttributeInfo(
-        name="kind",
-        description="The kind of the virtual machine preference",
-        type="string or list[string]",
-    ),
-        AttributeInfo(
-        name="devices.preferredInterfaceModel",
-        description="optionally defines the preferred model to be used by Interface devices",
-        type="string or list[string]",
-    ),
-        AttributeInfo(
-        name="preferredTerminationGracePeriodSeconds",
-        description="Grace period observed after signalling the Virtual Machine to stop after which the Virtual Machine will be forced to terminate",
-        type="integer",
-    ),
-        AttributeInfo(
-        name="devices.preferredDiskDedicatedIoThread",
-        description="optionally enables dedicated IO threads for Disk devices",
-        type="bool",
-    ),
-        AttributeInfo(
-        name="requirements.cpu.guest",
-        description="indicates the minimum number of CPUs required for this preference",
-        type="integer",
-    ),
-        AttributeInfo(
-        name="requirements.memory.guest",
-        description="indicates the minimum memory size in bytes required for this preference",
-        type="integer",
-    ),
-        AttributeInfo(
-        name="firmware.preferredUseEfi",
-        description="Indicated whether the EFI boot should be enabled",
-        type="bool",
-    ),]
 
 # Load LLM
 
@@ -252,7 +161,6 @@ prefs_metadata_field_info = [
 #"llama2-70b-4096"
 #"gemma-7b-it"
 GROQ_LLM = ChatGroq(
-            #model="mixtral-8x7b-32768",
             model="llama3-70b-8192",
             temperature=0,
         )
@@ -261,24 +169,20 @@ llm = ChatOpenAI(model_name="gpt-3.5-turbo", temperature=0)
 
 vectordbInstTypes = Chroma(persist_directory=persist_directory, embedding_function=e, collection_name = 'instanceTypes')
 vectordbPrefs = Chroma(persist_directory=persist_directory, embedding_function=e, collection_name = 'prefs')
+vectordbBootSrcs = Chroma(persist_directory=persist_directory, embedding_function=e, collection_name = 'bootSrcs')
 
 
 
 retrieverInstTypes = SelfQueryRetriever.from_llm(
-    #GROQ_LLM,
     llm,
     vectordbInstTypes,
     instTypes_document_content_description,
     instTypes_metadata_field_info,
     verbose=True,
-    #enable_limit=True,
-    #search_kwargs={"k":10},
-    #structured_query_translator=QdrantTranslator(metadata_key="metadata"),
     structured_query_translator = ChromaTranslator(),
     fix_invalid=True,
 
 )
-
 
 retrieverPrefs = SelfQueryRetriever.from_llm(
     llm,
@@ -286,15 +190,22 @@ retrieverPrefs = SelfQueryRetriever.from_llm(
     prefs_document_content_description,
     prefs_metadata_field_info,
     verbose=True,
-    #enable_limit=True,
-    #search_kwargs={"k":10},
+    structured_query_translator = ChromaTranslator(),
+    fix_invalid=True,
+)
+
+retrieverBootSources = SelfQueryRetriever.from_llm(
+    llm,
+    vectordbBootSrcs,
+    bootSrcs_document_content_description,
+    bootSrcs_metadata_field_info,
+    verbose=True,
     structured_query_translator = ChromaTranslator(),
     fix_invalid=True,
 )
 
 
 #Build the vector retrievers
-
 
 gen_instances_prompt = ChatPromptTemplate.from_messages(
     [
@@ -365,17 +276,13 @@ async def retrieve_instance_type(state: VmCreationState):
     vmdef = state["virtualMachine"]
     try:
         CONTEXT = await retrieverInstTypes.ainvoke(definition)
-        print("CONTEXT inst try1: ", CONTEXT)
     except:
         CONTEXT=[]
     if len(CONTEXT) == 0:
         retriever_from_llm = MultiQueryRetriever.from_llm(vectordbInstTypes.as_retriever(), llm=llm)
         CONTEXT = await retriever_from_llm.ainvoke(definition)
-        print("CONTEXT inst try2: ", CONTEXT)
         
     result = await gen_instTypes_chain.ainvoke({"query": definition, "context":CONTEXT})
-
-    print(result.instanceTypes[0].name)
 
     if result is None:
         result = {"instanceTypes": [{"name": "no instance type"}]}
@@ -393,13 +300,11 @@ async def retrieve_preference(state: VmCreationState):
 
     try:
         CONTEXT = await retrieverPrefs.ainvoke(definition)
-        print(CONTEXT)
     except:
         CONTEXT=[]
     if len(CONTEXT) == 0:
         retriever_from_llm = MultiQueryRetriever.from_llm(vectordbPrefs.as_retriever(), llm=llm)
         CONTEXT = await retriever_from_llm.ainvoke(definition)
-        print(CONTEXT)
     
     result = await gen_preferences_chain.ainvoke({"query": definition, "context":CONTEXT})
     if result is None:
@@ -417,12 +322,95 @@ async def finalize(state: VmCreationState):
         return END
     return "init_vm"
 
+async def handle_volumes(state: VmCreationState):
+    definition = state["definition"]
+    vm = state["virtualMachine"]
+
+    # Query rewriting prompt to find out which OS should be used for boot
+    os_query_prompt = ChatPromptTemplate.from_messages(
+        [
+            (
+                "system",
+                "Your goal is to understand what operating system should be used to boot the virtual machine the user is requesting in the user query. If the user didn't explicitly mentoin the operating system, please assume that it's Fedora. Then, compose a qestion for a vector store retriever to explicitly retrieve the desired operating system.",
+            ),
+            ("user", "Query: {query}"),
+        ]
+    )
+
+    # LLM Chain for query rewriting
+    rewriting_chain = os_query_prompt| GROQ_LLM| StrOutputParser()
+    # Run the chain
+    definition = await rewriting_chain.ainvoke({"query": definition})
+
+    try:
+        CONTEXT = await retrieverBootSources.ainvoke(definition)
+    except:
+        CONTEXT=[]
+    if len(CONTEXT) == 0:
+        retriever_from_llm = MultiQueryRetriever.from_llm(vectordbBootSrcs.as_retriever(), llm=llm)
+        CONTEXT = await retriever_from_llm.ainvoke(definition)
+
+    if len(CONTEXT) > 0:
+
+        context_prompt = ChatPromptTemplate.from_messages(
+            [
+                (
+                    "system",
+                    "Use the provided context {context} to select only oned atavolume source, most suitable for the requestion operating system in the user query. if the user didn't request any specific operating system, assume fedora is most suitable.",
+                ),
+                ("user", "Query: {query}"),
+            ]
+        )
+        
+        gen_boot_source_chain = context_prompt | llm.with_structured_output(RelatedBootSource)
+        result = await gen_boot_source_chain.ainvoke({"query": definition, "context":CONTEXT})
+        if result:
+
+            # ---- rewrite the volume section
+            rewrite_volumes_prompt = ChatPromptTemplate.from_messages(
+                [
+                    (
+                        "system",
+                        "Generate a data volume template based on the provided context: {context}. The datavolume name must be the name provided in the context.",
+                    ),
+                ]
+            )
+            
+            gen_boot_source_chain = rewrite_volumes_prompt | llm.with_structured_output(DataVolumeTemplateSpec)
+            datavolume =  await gen_boot_source_chain.ainvoke({"context": result.bootsources[0].name})
+            vm.spec.dataVolumeTemplates = [datavolume]
+            # Convert the Pydantic object to a dictionary
+            if isinstance(vm, dict):
+                vm_dict = vm
+            else:
+                vm_dict = vm.dict()
+            # Convert the vol dictionary to a json string
+            json_vol_string = dumps(vm_dict['spec']['template']['spec']['volumes'])
+            vmspec = dumps(vm_dict)
+            vol_context_prompt = ChatPromptTemplate.from_messages(
+                [
+                    (
+                        "system",
+                        "Rewrite the provided volumes section {volumes} based on the requrements provided by the user query. One of the volumes must be a dataVolume. The dataVolume name must be {dname} as provided. The number of volumes must be equal to the number of disks and the name of the volume must be identical to the name of the corresponding disk from the context {context}",
+                    ),
+                    ("user", "Query: {query}"),
+                ]
+            )
+            gen_vol_chain = vol_context_prompt | llm.with_structured_output(RelatedVolumes)
+            volumes =  await gen_vol_chain.ainvoke({"dname": result.bootsources[0].name, 'volumes': json_vol_string, "query": definition, "context": vmspec})
+            vm.spec.template.spec.volumes = volumes.volumes
+    return {
+        **state,
+        "virtualMachine": vm,
+    }
+
 vm_builder = StateGraph(VmCreationState)
 
 nodes = [
     ("init_vm", generate_draft_vm),
     ("retrieve_instance_type", retrieve_instance_type),
     ("retrieve_preference", retrieve_preference),
+    ("handle_volumes", handle_volumes),
 ]
 for i in range(len(nodes)):
     name, node = nodes[i]
@@ -450,13 +438,14 @@ async def get_supervisor_response(state: AssistantState):
     system_prompt = (
         "You are a supervisor tasked to choose which agent to run between"
         " following workers:  {members}. Evaluate the following user request,"
-        " you should respond with VMBuilder if the user requests to build or compose a Virtual Machine configuration."
+        " you should respond with VMBuilder only if the user explicitly requests to build, compose, generate or construct a configuration for a Virtual Machine."
         " You must return InstanceTypeLookup if the user is asking about virtual machine instance types or simply instance types. InstanceTypeLookup is not a tool, but a name of a member."
         " For questions about preferences or virtual machine preferences you should respond with PreferencesLookup" 
+        " If the user is inquiring boot sources, operating systems to boot from or images that can be used for booting a virtual machine, you should respond with BootSourceLookup. BootSourceLookup is not a tool or a function, but a name of a member." 
         " For any other questions you should respond with LLM."
     )
     query = state["message"]
-    members = ["VMBuilder", "InstanceTypeLookup", "PreferencesLookup", "LLM"]
+    members = ["VMBuilder", "InstanceTypeLookup", "PreferencesLookup", "BootSourceLookup", "LLM"]
     prompt = ChatPromptTemplate.from_messages(
         [
             ("system", system_prompt),
@@ -471,23 +460,6 @@ async def get_supervisor_response(state: AssistantState):
     gen_callagent_chain = prompt | GROQ_LLM.with_structured_output(CallAgent)
     result = await gen_callagent_chain.ainvoke({"query": query, "members":", ".join(members), "options": str(members)})
 
-    # Retrieve all documents using the retriever
-    ret = vectordbInstTypes.as_retriever(search_kwargs={"k": 100})
-    print(ret.invoke("list all available instance types."))
-
-
-    print("----------------------------")
-    all_documents1 = collectionInstTypes.get()
-    # Print all documents
-    try:
-        for idx in range(len(all_documents1['documents'])):
-            print(all_documents1['documents'][idx])
-            meta = all_documents1['metadatas'][idx]
-            print(type(meta))
-            print(meta.get('name'))
-    except Exception as e:
-        print("...")
-        print(e)
     return {
         **state,
         "callAgent": result.callAgent,
@@ -516,15 +488,12 @@ async def lookup_instance_types(state: AssistantState):
     query = state["message"]
     try:
         CONTEXT = await retrieverInstTypes.ainvoke(query, search_kwargs={"k":100})
-        print("CONTEXT try1: ", CONTEXT)
     except:
         CONTEXT=[]
     try:
         retriever_from_llm = MultiQueryRetriever.from_llm(vectordbInstTypes.as_retriever(search_kwargs={"k": 100}), llm=llm)
         CONTEXT1 = await retriever_from_llm.ainvoke(query)
-        print("CONTEXT try2: ", CONTEXT1)
     except Exception as e:
-        print("ERROR::: ", e)
         CONTEXT1 = []
     CONTEXT=CONTEXT+CONTEXT1
     prompt = ChatPromptTemplate.from_messages(
@@ -552,15 +521,12 @@ async def lookup_preferences(state: AssistantState):
 
     try:
         CONTEXT = await retrieverPrefs.ainvoke(query)
-        print(CONTEXT)
     except:
         CONTEXT=[]
     try:
         retriever_from_llm = MultiQueryRetriever.from_llm(vectordbPrefs.as_retriever(search_kwargs={"k": 100}), llm=llm)
         CONTEXT1 = await retriever_from_llm.ainvoke(query)
-        print("CONTEXT try2: ", CONTEXT1)
     except Exception as e:
-        print("ERROR::: ", e)
         CONTEXT1 = []
     CONTEXT=CONTEXT+CONTEXT1
 
@@ -583,13 +549,45 @@ async def lookup_preferences(state: AssistantState):
         "response": result,
     }
 
+async def lookup_bootsources(state: AssistantState):
+    query = state["message"]
+
+    try:
+        CONTEXT = await retrieverBootSources.ainvoke(query)
+    except:
+        CONTEXT=[]
+    try:
+        retriever_from_llm = MultiQueryRetriever.from_llm(vectordbBootSrcs.as_retriever(search_kwargs={"k": 100}), llm=llm)
+        CONTEXT1 = await retriever_from_llm.ainvoke(query)
+    except Exception as e:
+        CONTEXT1 = []
+    CONTEXT=CONTEXT+CONTEXT1
+
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            (
+                "system",
+                """You need to help answering questions about available operating systems that can be used as a boot source from the provided context. Your answer should be based on the user query which contains the requirements. Here is the context: {context}. If you don't know the answer, just say that you don't know.""",
+            ),
+            ("user", "Query: {query}"),
+        ]
+    )
+    
+    chain = prompt| GROQ_LLM| StrOutputParser()
+
+    # Run the chain
+    result = await chain.ainvoke({"query": query, "context": CONTEXT})
+    return {
+        **state,
+        "response": result,
+    }
+
 async def build_vm_config(astate: AssistantState):
     query = astate["message"]
     # Run the chain
     try: 
         result = await vm.ainvoke({"definition": query})
     except Exception as e:
-        print("Error in vm invoke: ", e)
         result = {"retrieve_preference": {"virtualMachine": {}}}
     logger.info("result :")
     logger.info(result)
@@ -622,28 +620,20 @@ async def build_vm_config(astate: AssistantState):
         "response": res,
     }
 
-async def responder(astate: AssistantState):
-    res = astate["response"]
-    logger.info("resonse: %s", res)    
-    return {
-        **astate,
-        "response": res,
-    }
-
-
 
 supervisor_builder = StateGraph(AssistantState)
 supervisor_builder.add_node("supervisor", get_supervisor_response)
 supervisor_builder.add_node("VMBuilder", build_vm_config)
 supervisor_builder.add_node("PreferencesLookup", lookup_preferences)
 supervisor_builder.add_node("InstanceTypeLookup", lookup_instance_types)
+supervisor_builder.add_node("BootSourceLookup", lookup_bootsources)
 supervisor_builder.add_node("LLM", get_response_from_llm)
 
 supervisor_builder.add_edge("VMBuilder", "supervisor")
 supervisor_builder.add_edge("PreferencesLookup", "supervisor")
 supervisor_builder.add_edge("InstanceTypeLookup", "supervisor")
+supervisor_builder.add_edge("BootSourceLookup", "supervisor")
 supervisor_builder.add_edge("LLM", "supervisor")
-#supervisor_builder.add_edge("responder", END)
 
 supervisor_builder.add_conditional_edges(
     "supervisor",
@@ -651,6 +641,7 @@ supervisor_builder.add_conditional_edges(
     {"VMBuilder": "VMBuilder",
     "InstanceTypeLookup": "InstanceTypeLookup", 
     "PreferencesLookup": "PreferencesLookup",
+    "BootSourceLookup": "BootSourceLookup",
     "END": END,
     "LLM": "LLM"},
 )
