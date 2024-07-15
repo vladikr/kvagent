@@ -92,7 +92,9 @@ def main():
     " * Please list all available VM preferences.\n"
     " * What instance type is better to use if I want to run a virtual machine with RHEL9 image.\n"
     " * What VM preference should I choose if I want to run a windows 11 virtual machine.\n"
-    " * Generate a configuration for a large virtual machine with more than 4 CPUs, meant for high performance and running fedora image."
+    " * Please list all the bootable images and their names.\n"
+    " * What image should I use if I want to run windows 11?\n"
+    " * Generate a configuration for a large virtual machine with more than 4 CPUs, meant for high performance and running windows 11 image."
     )
 
 

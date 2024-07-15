@@ -5,9 +5,11 @@ metadata:
   labels:
     app.kubernetes.io/name: kvagent
 spec:
+  serviceAccountName: kvagent-serviceaccount
   containers:
-  - image: quay.io/vladikr/kvagent
+  - image: quay.io/vladikr/kvagent:devel
     name: kvagent
+    imagePullPolicy: Always
     envFrom:
     - secretRef:
         name: kvagent-secret
