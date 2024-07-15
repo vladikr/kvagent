@@ -4,24 +4,31 @@ from kubernetes import client, config
 from openshift.dynamic import DynamicClient
 from langchain.chains.query_constructor.base import AttributeInfo
 from openshift.helper.userpassauth import OCPLoginConfiguration
+import logging
+logger = logging.getLogger(__name__)
 
 
 def get_client():
-    server = "%s" % os.environ.get('K_SERVER')
-    api_key = "%s" % os.environ.get('K_API_KEY')
+    server = os.environ.get('K_SERVER')
+    api_key = os.environ.get('K_API_KEY')
     c = OCPLoginConfiguration()
+    k8s_client = None
     try:
+        config.load_incluster_config()
         k8s_client = config.new_client_from_config()
-    except:
-        pass
+    except Exception as e:
+        logger.error("k8s client: %s" % e)
 
     c.verify_ssl = False
     if server:
-        c.host = server
-    if api_key:
-        c.api_key = {"authorization": "Bearer " + api_key}
- 
-    k8s_client = client.ApiClient(c)
+        c.host = "%s" % server.strip('\n')
+        if api_key:
+            c.api_key = {"authorization": "Bearer " + "%s" % api_key.strip('\n')}
+        k8s_client = client.ApiClient(c)
+    
+    if k8s_client is None:
+        k8s_client = client.ApiClient()
+    
     return DynamicClient(k8s_client)
     
 

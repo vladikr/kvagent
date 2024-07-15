@@ -391,13 +391,19 @@ async def handle_volumes(state: VmCreationState):
                 [
                     (
                         "system",
-                        "Rewrite the provided volumes section {volumes} based on the requrements provided by the user query. One of the volumes must be a dataVolume. The dataVolume name must be {dname} as provided. The number of volumes must be equal to the number of disks and the name of the volume must be identical to the name of the corresponding disk from the context {context}",
+                        "Rewrite the provided volumes section {volumes} based on the requrements provided by the user query. One of the volumes must be a dataVolume. The dataVolume name must exactly match the provided {dname}. The number of volumes must be equal to the number of disks and the name of the volume must be identical to the name of the corresponding disk from the context {context}",
                     ),
                     ("user", "Query: {query}"),
                 ]
             )
             gen_vol_chain = vol_context_prompt | llm.with_structured_output(RelatedVolumes)
-            volumes =  await gen_vol_chain.ainvoke({"dname": result.bootsources[0].name, 'volumes': json_vol_string, "query": definition, "context": vmspec})
+            volumes =  await gen_vol_chain.ainvoke({"dname": datavolume.metadata.name, 'volumes': json_vol_string, "query": definition, "context": vmspec})
+            try: 
+                for idx in range(len(volumes.volumes)):
+                    if volumes.volumes[idx].dataVolume:
+                        volumes.volumes[idx].dataVolume.name = datavolume.metadata.name
+            except Exception as e:
+                print("ERROR: %s" % e)
             vm.spec.template.spec.volumes = volumes.volumes
     return {
         **state,
@@ -440,7 +446,7 @@ async def get_supervisor_response(state: AssistantState):
         " following workers:  {members}. Evaluate the following user request,"
         " you should respond with VMBuilder only if the user explicitly requests to build, compose, generate or construct a configuration for a Virtual Machine."
         " You must return InstanceTypeLookup if the user is asking about virtual machine instance types or simply instance types. InstanceTypeLookup is not a tool, but a name of a member."
-        " For questions about preferences or virtual machine preferences you should respond with PreferencesLookup" 
+        " For questions about preferences or virtual machine preferences you should respond with PreferencesLookup. PreferencesLookup is not a tool, but a name of a member." 
         " If the user is inquiring boot sources, operating systems to boot from or images that can be used for booting a virtual machine, you should respond with BootSourceLookup. BootSourceLookup is not a tool or a function, but a name of a member." 
         " For any other questions you should respond with LLM."
     )
