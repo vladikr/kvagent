@@ -2,10 +2,14 @@ import os
 import re
 import requests
 
-GITHUB_TOKEN = os.environ["GITHUB_TOKEN"]
+GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN")
 KUBEVIRT_REPO = os.environ.get("GITHUB_REPOSITORY", "kubevirt/kubevirt")
 PR_NUMBER = os.environ["PR_NUMBER"]
-HEADERS = {"Authorization": f"token {GITHUB_TOKEN}", "Accept": "application/vnd.github.v3+json"}
+HEADERS = {
+    "Accept": "application/vnd.github.v3+json"
+}
+if GITHUB_TOKEN:
+    HEADERS["Authorization"] = f"token {GITHUB_TOKEN}"
 
 def get_pr_details():
     #Fetch the kubevirt/kubevirt PR body
